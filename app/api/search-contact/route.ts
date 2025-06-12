@@ -24,10 +24,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('Searching for contact with email:', email);
+    console.log('Searching for exact email match:', email);
 
-    // Step 1: Use the exact email lookup endpoint
-    const searchResponse = await fetch(
+    // Step 1: Use the exact email lookup endpoint (not search)
+    const findResponse = await fetch(
       `https://rest.gohighlevel.com/v1/contacts?locationId=${locationId}&email=${encodeURIComponent(email)}`,
       {
         method: 'GET',
@@ -38,19 +38,21 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    console.log('Search response status:', searchResponse.status);
+    console.log('Find response status:', findResponse.status);
 
-    if (!searchResponse.ok) {
-      const errorText = await searchResponse.text();
-      console.error('Search failed:', searchResponse.status, errorText);
-      throw new Error(`Search failed: ${searchResponse.statusText}`);
+    if (!findResponse.ok) {
+      const errorText = await findResponse.text();
+      console.error('Find request failed:', findResponse.status, errorText);
+      throw new Error(`Find request failed: ${findResponse.statusText}`);
     }
 
-    const searchData = await searchResponse.json();
-    console.log('Search response data:', JSON.stringify(searchData, null, 2));
+    const findData = await findResponse.json();
+    console.log('Find response data:', JSON.stringify(findData, null, 2));
     
-    // Check if any contacts were found
-    if (!searchData.contacts || searchData.contacts.length === 0) {
+    // Extract contacts array and find exact email match
+    const { contacts } = findData;
+    
+    if (!contacts || contacts.length === 0) {
       console.log('No contacts found for email:', email);
       return NextResponse.json(
         { found: false, message: 'Contact not found' },
@@ -58,9 +60,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get the first matching contact
-    const contact = searchData.contacts[0];
-    console.log('Found contact:', contact.id, contact.email);
+    // Find the contact with the exact email match
+    const target = contacts.find(c => c.email === email);
+    
+    if (!target) {
+      console.log('No exact email match found among contacts:', contacts.map(c => c.email));
+      return NextResponse.json(
+        { found: false, message: `No contact exactly matching ${email}` },
+        { status: 404 }
+      );
+    }
+
+    console.log('Found exact match - Contact ID:', target.id, 'Email:', target.email);
 
     // Step 2: Update the contact with custom field using correct payload structure
     const updatePayload = {
@@ -72,7 +83,7 @@ export async function POST(request: NextRequest) {
     console.log('Updating contact with payload:', JSON.stringify(updatePayload, null, 2));
 
     const updateResponse = await fetch(
-      `https://rest.gohighlevel.com/v1/contacts/${contact.id}`,
+      `https://rest.gohighlevel.com/v1/contacts/${target.id}`,
       {
         method: 'PUT',
         headers: {
@@ -102,9 +113,9 @@ export async function POST(request: NextRequest) {
         found: true,
         message: 'Contact found and updated successfully',
         contact: {
-          id: contact.id,
-          email: contact.email,
-          name: `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || 'N/A'
+          id: target.id,
+          email: target.email,
+          name: `${target.firstName || ''} ${target.lastName || ''}`.trim() || 'N/A'
         },
         updateStatus: updateResponse.status,
         updateResponse: updateBody
