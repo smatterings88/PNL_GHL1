@@ -24,7 +24,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Search for contact by email using the correct endpoint
+    console.log('Searching for contact with email:', email);
+
+    // Step 1: Use the exact email lookup endpoint
     const searchResponse = await fetch(
       `https://rest.gohighlevel.com/v1/contacts?locationId=${locationId}&email=${encodeURIComponent(email)}`,
       {
@@ -36,14 +38,20 @@ export async function POST(request: NextRequest) {
       }
     );
 
+    console.log('Search response status:', searchResponse.status);
+
     if (!searchResponse.ok) {
+      const errorText = await searchResponse.text();
+      console.error('Search failed:', searchResponse.status, errorText);
       throw new Error(`Search failed: ${searchResponse.statusText}`);
     }
 
     const searchData = await searchResponse.json();
+    console.log('Search response data:', JSON.stringify(searchData, null, 2));
     
     // Check if any contacts were found
     if (!searchData.contacts || searchData.contacts.length === 0) {
+      console.log('No contacts found for email:', email);
       return NextResponse.json(
         { found: false, message: 'Contact not found' },
         { status: 404 }
@@ -52,8 +60,17 @@ export async function POST(request: NextRequest) {
 
     // Get the first matching contact
     const contact = searchData.contacts[0];
+    console.log('Found contact:', contact.id, contact.email);
 
-    // Update the contact with custom field
+    // Step 2: Update the contact with custom field using correct payload structure
+    const updatePayload = {
+      customField: {
+        pnl_referral_code: 'found'
+      }
+    };
+
+    console.log('Updating contact with payload:', JSON.stringify(updatePayload, null, 2));
+
     const updateResponse = await fetch(
       `https://rest.gohighlevel.com/v1/contacts/${contact.id}`,
       {
@@ -62,35 +79,47 @@ export async function POST(request: NextRequest) {
           'Authorization': `Bearer ${jwt}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          customFields: [
-            {
-              key: 'contact.pnl_referral_code',
-              field_value: 'found'
-            }
-          ]
-        }),
+        body: JSON.stringify(updatePayload),
       }
     );
 
+    // Step 3: Log and verify the update response
+    console.log('Update response status:', updateResponse.status);
+    
+    const updateBody = await updateResponse.json();
+    console.log('Update response body:', JSON.stringify(updateBody, null, 2));
+
     if (!updateResponse.ok) {
-      throw new Error(`Update failed: ${updateResponse.statusText}`);
+      console.error('Update failed:', updateResponse.status, updateBody);
+      throw new Error(`Update failed: ${updateResponse.statusText} - ${JSON.stringify(updateBody)}`);
     }
 
-    return NextResponse.json({
-      found: true,
-      message: 'Contact found and updated successfully',
-      contact: {
-        id: contact.id,
-        email: contact.email,
-        name: `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || 'N/A'
-      }
-    });
+    // Verify the update was successful
+    if (updateResponse.status === 200 || updateResponse.status === 204) {
+      console.log('Contact updated successfully');
+      
+      return NextResponse.json({
+        found: true,
+        message: 'Contact found and updated successfully',
+        contact: {
+          id: contact.id,
+          email: contact.email,
+          name: `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || 'N/A'
+        },
+        updateStatus: updateResponse.status,
+        updateResponse: updateBody
+      });
+    } else {
+      throw new Error(`Unexpected update response status: ${updateResponse.status}`);
+    }
 
   } catch (error) {
     console.error('API Error:', error);
     return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+      { 
+        error: 'Internal server error', 
+        details: error instanceof Error ? error.message : 'Unknown error' 
+      },
       { status: 500 }
     );
   }
