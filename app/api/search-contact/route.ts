@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Force this API route to always run at request-time
-export const dynamic = 'force-dynamic';
-
 export async function POST(request: NextRequest) {
   try {
     const { email } = await request.json();
@@ -26,7 +23,7 @@ export async function POST(request: NextRequest) {
 
     console.log('Searching for exact email match:', email);
 
-    // Step 1: Use the exact email lookup endpoint (not search)
+    // Step 1: Use the exact email lookup endpoint (not fuzzy search)
     const findResponse = await fetch(
       `https://rest.gohighlevel.com/v1/contacts?locationId=${locationId}&email=${encodeURIComponent(email)}`,
       {
@@ -49,7 +46,7 @@ export async function POST(request: NextRequest) {
     const findData = await findResponse.json();
     console.log('Find response data:', JSON.stringify(findData, null, 2));
     
-    // Extract contacts array and find exact email match
+    // Step 2: Extract contacts array and find exact email match
     const { contacts } = findData;
     
     if (!contacts || contacts.length === 0) {
@@ -60,7 +57,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find the contact with the exact email match
+    // Find the contact with the exact email match (double-check)
     const target = contacts.find(c => c.email === email);
     
     if (!target) {
@@ -71,9 +68,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('Found exact match - Contact ID:', target.id, 'Email:', target.email);
+    console.log('Found exact match - Contact ID:', target.id, 'Name:', target.firstName, target.lastName, 'Email:', target.email);
 
-    // Step 2: Update the contact with custom field using correct payload structure
+    // Step 3: Update the contact with custom field using correct payload structure
     const updatePayload = {
       customField: {
         pnl_referral_code: 'found'
@@ -94,7 +91,7 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    // Step 3: Log and verify the update response
+    // Step 4: Log and verify the update response
     console.log('Update response status:', updateResponse.status);
     
     const updateBody = await updateResponse.json();
